@@ -1,0 +1,15 @@
+MODULE main
+VAR
+	client0 : process lock_client;
+	client1 : process lock_client;
+	client2 : process lock_client;
+	client3 : process lock_client;
+	client4 : process lock_client;
+	client5 : process lock_client;
+
+	lock0 : boolean;
+	lock1 : boolean;
+
+MODULE lock_client
+VAR
+	local : boolean;
