@@ -1,0 +1,45 @@
+MODULE lock_client(id_assign)
+VAR
+	id : {0, 1, 2, 3, 4, 5};
+	lock0_record : lock_record_client;
+	lock1_record : lock_record_client;
+ASSIGN
+	init(id) := id_assign;
+
+MODULE lock_record_server
+VAR
+	hold : boolean;
+	owner : {0, 1, 2, 3, 4, 5};
+	waiting_list : array 0 .. 4 of {0, 1, 2, 3, 4, 5};
+	waiting_list_status : array 0 .. 4 of boolean;
+ASSIGN
+	init(hold) := 0;
+	init(owner) := 0;
+	init(waiting_list[0]) := 0;
+	init(waiting_list[1]) := 0;
+	init(waiting_list[2]) := 0;
+	init(waiting_list[3]) := 0;
+	init(waiting_list[4]) := 0;
+	init(waiting_list_status[0]) := 0;
+	init(waiting_list_status[1]) := 0;
+	init(waiting_list_status[2]) := 0;
+	init(waiting_list_status[3]) := 0;
+	init(waiting_list_status[4]) := 0;
+		
+MODULE lock_record_client
+VAR
+	status : {hold, acquiring, releasing, not_hold, free};
+	revoke : boolean;
+	retry : boolean;
+
+MODULE main
+VAR
+	client0 : process lock_client(0);
+	client1 : process lock_client(1);
+	client2 : process lock_client(2);
+	client3 : process lock_client(3);
+	client4 : process lock_client(4);
+	client5 : process lock_client(5);
+
+	lock0 : lock_record_server;
+	lock1 : lock_record_server;

@@ -1,15 +1,44 @@
-MODULE main
-VAR
-	client0 : process lock_client;
-	client1 : process lock_client;
-	client2 : process lock_client;
-	client3 : process lock_client;
-	client4 : process lock_client;
-	client5 : process lock_client;
+MODULE main()
+{
+	channel_in : array 0 .. 3 of lc_thread_in;
+	channel_out : array 0 .. 3 of lc_thread_out;
+	lt : array 0 .. 3;
+	for(i = 0; i < 2; i = i + 1) {
+		lt[i] : process lock_client_thread(channel_in[i], channel_out[i]);
+	}
 
-	lock0 : boolean;
-	lock1 : boolean;
+SPEC
+	AF(channel_out[0].acquire);
+}
 
-MODULE lock_client
+MODULE lock_client_thread(lct_in, lct_out)
+{
+	status : {hold, not_hold, acquiring, releasing};
+	
+	init(status) := not_hold;
+	next(status) := switch(status) {
+		not_hold : {not_hold, acquiring};
+		acquiring : lct_in.acquire_ok ? hold : acquiring;
+		hold : {releasing, hold};
+		releasing : lct_in.release_ok ? not_hold : releasing;
+		1 : not_hold;
+	};
+	next(lct_out.acquire) := (status = acquiring) ? 1 : 0;
+	next(lct_out.release) := status = releasing ? 1 : 0;
+	next(lct_out.lid) := (status = acquiring & !lct_out.acquire) ? {0 .. 1} : 0;
+FAIRNESS
+	running;
+}
+
+MODULE lc_thread_in() {
 VAR
-	local : boolean;
+	acquire_ok : boolean;
+	release_ok : boolean;
+}
+
+MODULE lc_thread_out() {
+VAR
+	acquire : boolean;
+	release : boolean;
+	lid : 0 .. 1;
+}
