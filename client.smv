@@ -1,0 +1,16 @@
+MODULE main()
+{
+	
+}
+
+MODULE lock_client()
+{
+	client_state : struct {
+		lockMap : array 0 .. 1 of struct {
+			threadNum : 0 .. 4;
+			lockStatus : {hold, acquiring, releasing, not_hold, free};
+			gotRevoke : boolean;
+			gotRetry : boolean;
+		};	
+	};
+}
