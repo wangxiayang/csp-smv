@@ -1,0 +1,36 @@
+MODULE main()
+{
+	wake_ok : boolean;
+	semaphore : boolean;
+
+	waker : process waker(wake_ok);
+	sleepers : array 0 .. 3 of process sleeper(wake_ok, semaphore);
+
+SPEC
+	!EF sleepers[0].state = done;
+}
+
+MODULE waker(wake_ok)
+{
+	init(wake_ok) := 0;
+	next(wake_ok) := wake_ok ? 1 : {0, 1};
+}
+
+MODULE sleeper(wake_ok, semaphore)
+{
+	state : {not_hold, requiring, hold, releasing, done};
+	init(state) := not_hold;
+	next(state) := case {
+		state = not_hold : {not_hold, requiring};
+		state = requiring : (wake_ok & !semaphore) ? hold : requiring;
+		state = hold : {hold, releasing};
+		state = releasing : done;
+		1 : done;
+	};
+	next(semaphore) := case {
+		state = requiring & wake_ok & !semaphore : 1;
+		state = releasing : 0;
+		1 : state;
+	};
+	next(wake_ok) := state = (requiring & wake_ok & !semaphore) ? 0 : wake_ok;
+}
