@@ -1,14 +1,15 @@
 MODULE main()
 {
-	channel_in : array 0 .. 3 of lc_thread_in;
-	channel_out : array 0 .. 3 of lc_thread_out;
+	channel_in : array 0 .. 3 of lc_thread_in();
+	channel_out : array 0 .. 3 of lc_thread_out();
 	lt : array 0 .. 3;
-	for(i = 0; i < 2; i = i + 1) {
-		lt[i] : process lock_client_thread(channel_in[i], channel_out[i]);
-	}
+	for(i = 0; i < 4; i = i + 1)
+		lt[i] : process lock_client_thread(channel_in[0], channel_out[0]);
 
 SPEC
-	AF(channel_out[0].acquire);
+	AG(lt[0].status = acquiring -> AF channel_out[0].acquire)
+	& AG(lt[0].status = not_hold -> EF channel_out[0].release)
+	& AG(lt[0].status = releasing -> AF channel_out[0].release);
 }
 
 MODULE lock_client_thread(lct_in, lct_out)
