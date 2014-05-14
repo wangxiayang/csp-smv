@@ -11,6 +11,55 @@ MODULE lock_client()
 			lockStatus : {hold, acquiring, releasing, not_hold, free};
 			gotRevoke : boolean;
 			gotRetry : boolean;
-		};	
+			lock : mutex_t;
+			acqCond : cond_t;
+			retry : cond_t;
+		};
 	};
+
+	threads : array 0 .. 3 of process lc_thread(client_state);
+}
+
+typedef cond_t boolean;
+typedef mutex_t boolean;
+
+MODULE lc_thread(client_state)
+{
+	lid : 0 .. 1;
+
+	state : {lct_free, lct_prepare_acquire, lct_acquiring, lct_hold, lct_releasing};
+	gotMutex : boolean;
+	thrNumIncreased : boolean;
+	getLock : boolean;
+
+	init(lid) := 0;
+	init(state) := lct_free;
+	init(gotMutex) := 0;
+	init(thrNumIncreased) := 0;
+	
+	next(state) := case {
+		state = lct_free : {lct_free, lct_acquiring};
+		state = lct_prepare_acquire : lct_acquiring;
+		state = lct_acquiring : {lct_acquiring, lct_hold};
+		state = lct_hold : {lct_hold, lct_releasing};
+		state = lct_releasing : {lct_free, lct_releasing};
+	};
+	next(lid) := case {
+		state = lct_prepare_acquire : {0, 1};
+		1 : lid;
+	};
+	next(gotMutex) := case {
+		state = lct_acquiring & !client_state.lockMap[lid].lock : 1;
+		1 : gotMutex;
+	};
+	next(client_state.lockMap[lid].lock) := case {
+		state = lct_acquiring & !client_state.lockMap[lid].lock : 1;
+		1 : client_state.lockMap[lid].lock;
+	};
+	next(thrNumIncreased) := (!thrNumIncreased & gotLock) ? 1 : thrNumIncreased;
+	next(client_state.lockMap[lid].threadNum) := (!thrNumIncreased & gotLock) ? client_state.lockMap[lid].threadNum + 1 : client_state.lockMap[lid].threadNum;
+	next(gotLock) := case {
+		(client_state.lockMap[lid].status = releasing | client_state.lockMap[lid].status = acquiring |
+		client_state.lockMap[lid].status = hold) : 
+	}
 }
