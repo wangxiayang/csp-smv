@@ -47,7 +47,10 @@ MODULE lock_client()
 		threads[i] : process lc_thread(client_state, server_lct_channels[i], lct_server_channels[i]);
 }
 
-typedef cond_t boolean;
+typedef cond_t struct {
+	wake_ok : boolean;
+	wait_num : 0 .. 4;
+}
 typedef mutex_t boolean;
 
 MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
@@ -57,6 +60,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 
 	-- state var of client instance
 	state : 36 .. 132;	-- use source code line number to indicate state
+	cond_state : {free, prepare, wait, done};
 	-- local vars
 	ret : lock_protocol_status;
 	thrNumIncreased : boolean;
@@ -65,6 +69,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	-- init the local vars and args
 	init(lid) := 0;
 	init(state) := 36;
+	init(cond_state) := free;
 	init(ret) := lock_protocol_ok;
 	init(getLock) := 0;
 	init(thrNumIncreased) := 0;
@@ -89,7 +94,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 				not_hold : 75;
 				free : 123;
 			};
-		69 : (client_state.lockMap[lid].acqCond & !client_state.lockMap[lid].lock) ? 71 : 69;
+		69 : (cond_state = done) ? 71 : 69;
 		71 : 128;
 		75 : 78;
 		78 : 80;
@@ -100,36 +105,90 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 		89 : (ret = lock_protocol_retry) ? 91 : 113;
 		91 : (client_state.lockMap[lid].gotRetry) ? 94 : 102;
 		94 : 109;
-		102 : 113;
-		109 : 113;
+		102 : (cond_state = done) ? 103 : 102;
+		103 : 109;
+		109 : 128;
 		113 : 128;
+		123 : 128;
+		128 : !getLock ? 58 : 130;
 		default : state;
+	};
+	next(cond_state) := case {
+		cond_state = prepare : wait;
+		cond_state = done : free;
+		state = 69 : case {
+			cond_state = free : prepare;
+			cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : done;
+		};
+		state = 102 : case {
+			cond_state = free : prepare;
+			cond_state = wait & client_state.lockMap[lid].retryCond.wake_ok & !client_state.lockMap[lid].lock : done;
+		};
+		1 : cond_state;
 	};
 	next(ret) := switch(state) {
 		37 : lock_protocol_ok;
 		80 : server_lct_channel.return.ready ? server_lct_channel.return.acquire_ret : ret;
 		84 : lock_protocol_ok;
+		109 : lock_protocol_ok;
 		default : ret;
 	};
 	next(client_state.lockMap[lid].lock) := case {
 		state = 58 & !client_state.lockMap[lid].lock : 1;
-		state = 69 : client_state.lockMap[lid].acqCond ? ;
+		state = 69 : case {
+			cond_state = prepare : 0;
+			cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : 1;
+		};
+		state = 102 : case {
+			cond_state = prepare : 0;
+			cond_state = wait & client_state.lockMap[lid].retryCond.wake_ok & !client_state.lockMap[lid].lock : 1;
+		};
 		state = 78 : 0;
 		state = 81 & !client_state.lockMap[lid].lock : 1;
+		state = 128 : 0;
 		1 : client_state.lockMap[lid].lock;
 	};
 	next(thrNumIncreased) := (state = 61) ? 1 : thrNumIncreased;
-	next(client_state.lockMap[lid].threadNum) := (state = 61) ? client_state.lockMap[lid].threadNum + 1 : client_state.lockMap[lid].threadNum;
-	next(client_state.lockMap[lid].acqCond) := (state = 69 & client_state.lockMap[lid].acqCond & !client_state.lockMap[lid].lock) ? 0 : client_state.lockMap[lid].acqCond;
+	next(client_state.lockMap[lid].threadNum) := switch(state) {
+		61 : client_state.lockMap[lid].threadNum + 1;
+		113 : client_state.lockMap[lid].threadNum - 1;
+		default : client_state.lockMap[lid].threadNum;
+	};
+	next(client_state.lockMap[lid].acqCond.wake_ok) := case {
+		state = 69 & cond_state = prepare & client_state.lockMap[lid].acqCond.wait_num = 0 : 0;
+		state = 69 & cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : 0;
+		1 : client_state.lockMap[lid].acqCond.wake_ok;
+	};
+	next(client_state.lockMap[lid].retryCond.wake_ok) := case {
+		state = 102 & cond_state = prepare & client_state.lockMap[lid].retryCond.wait_num = 0 : 0;
+		state = 102 & cond_state = wait & client_state.lockMap[lid].retryCond.wake_ok & !client_state.lockMap[lid].lock : 0;
+		1 : client_state.lockMap[lid].retryCond.wake_ok;
+	};
+	next(client_state.lockMap[lid].acqCond.wait_num) := case {
+		state = 69 & cond_state = prepare : client_state.lockMap[lid].acqCond.wait_num + 1;
+		state = 69 & cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : client_state.lockMap[lid].acqCond.wait_num - 1;
+		1 : client_state.lockMap[lid].acqCond.wait_num;
+	};
+	next(client_state.lockMap[lid].retryCond.wait_num) := case {
+		state = 102 & cond_state = prepare : client_state.lockMap[lid].retryCond.wait_num + 1;
+		state = 102 & cond_state = wait & client_state.lockMap[lid].retryCond.wake_ok & !client_state.lockMap[lid].lock : client_state.lockMap[lid].acqCond.wait_num - 1;
+		1 : client_state.lockMap[lid].retryCond.wait_num;
+	};
 	next(getLock) := switch(state) {
 		71 : 0;
 		84 : 1;
+		109 : 1;
+		113 : 1;
+		123 : 1;
 		default : getLock;
 	};
 	next(client_state.lockMap[lid].status) := switch(state) {
 		75 : acquiring;
 		84 : hold;
 		94 : hold;
+		103 : hold;
+		113 : not_hold;
+		123 : hold;
 		default : client_state.lockMap[lid].status;
 	};
 	next(lct_server_channel.call.procedure_id) := switch(state) {
@@ -155,16 +214,8 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	next(client_state.lockMap[lid].gotRetry) := switch(state) {
 		84 : 0;
 		94 : 0;
+		103 : 0;
 		default : client_state.lockMap[lid].gotRetry;
 	};
-}
-
-MODULE pthread_cond_wait(in_valid, out_valid, cond, mutex)
-{
-	state : {free, waiting};
-	next(state) := case {
-		state = free & in_valid : waiting;
-		state = waiting & 
-		1 : state;
-	};
+	next(client_state.lockMap[lid].acqCond.wake_ok) := (state = 113) ? 1 : client_state.lockMap[lid].acqCond.wake_ok;
 }

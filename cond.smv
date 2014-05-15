@@ -27,7 +27,7 @@ FAIRNESS
 MODULE sleeper(cv, mutex)
 {
 	state : 0 .. 4;
-	cond_state : {free, prepare, wait};
+	cond_state : {free, prepare, wait, done};
 
 	init(state) := 0;
 	init(cond_state) := free;
@@ -35,7 +35,7 @@ MODULE sleeper(cv, mutex)
 	next(state) := switch(state) {
 		0 : {0, 1};
 		1 : !mutex ? 2 : 1;	-- acquiring mutex
-		2 : cond_state = free ? 3 : 2;
+		2 : cond_state = done ? 3 : 2;
 		3 : {3, 4};
 		4 : 0;
 	};
@@ -47,9 +47,10 @@ MODULE sleeper(cv, mutex)
 		1 : mutex;
 	};
 	next(cond_state) := case {
-		state = 1 & !mutex : prepare;	-- leave one cycle to update cond and release mutex
+		state = 2 & cond_state = free : prepare;	-- leave one cycle to update cond and release mutex
 		cond_state = prepare : wait;
-		cond_state = wait & cv.wake_ok & !mutex : free;
+		cond_state = wait & cv.wake_ok & !mutex : done;
+		cond_state = done : free;
 		1 : cond_state;
 	};
 	next(cv.wake_ok) := case {
