@@ -3,6 +3,28 @@ MODULE main()
 	
 }
 
+typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr}
+typedef server_to_lct struct {
+	call : struct {
+
+	};
+	return : struct {
+		ready : boolean;
+		acquire_ret : lock_protocol_status;
+	};
+}
+typedef lct_to_server struct {
+	call : struct {
+		ready : boolean;
+		procedure_id : {lock_protocol_acquiring, lock_protocol_release};
+		lid : 0 .. 1;
+		id : 0 .. 5;
+	};
+	return : struct {
+
+	};
+}
+
 MODULE lock_client()
 {
 	client_state : struct {
@@ -15,51 +37,123 @@ MODULE lock_client()
 			acqCond : cond_t;
 			retry : cond_t;
 		};
+		id : 0 .. 5;
 	};
 
-	threads : array 0 .. 3 of process lc_thread(client_state);
+	lct_server_channels : array 0 .. 3 of lct_to_server;
+	server_lct_channels : array 0 .. 3 of server_to_lct;
+	threads : array 0 .. 3;
+	for(i = 0; i < 4; i++)
+		threads[i] : process lc_thread(client_state, server_lct_channels[i], lct_server_channels[i]);
 }
 
 typedef cond_t boolean;
 typedef mutex_t boolean;
 
-MODULE lc_thread(client_state)
+MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 {
+	-- args of the real acquire method
 	lid : 0 .. 1;
 
-	state : {lct_free, lct_prepare_acquire, lct_acquiring, lct_hold, lct_releasing};
-	gotMutex : boolean;
+	-- state var of client instance
+	state : 36 .. 132;	-- use source code line number to indicate state
+	-- local vars
+	ret : lock_protocol_status;
 	thrNumIncreased : boolean;
 	getLock : boolean;
 
+	-- init the local vars and args
 	init(lid) := 0;
-	init(state) := lct_free;
-	init(gotMutex) := 0;
+	init(state) := 36;
+	init(ret) := lock_protocol_ok;
+	init(getLock) := 0;
 	init(thrNumIncreased) := 0;
 	
-	next(state) := case {
-		state = lct_free : {lct_free, lct_acquiring};
-		state = lct_prepare_acquire : lct_acquiring;
-		state = lct_acquiring : {lct_acquiring, lct_hold};
-		state = lct_hold : {lct_hold, lct_releasing};
-		state = lct_releasing : {lct_free, lct_releasing};
-	};
+	-- init real arg when enter the real method, which is state 37 in this case
 	next(lid) := case {
-		state = lct_prepare_acquire : {0, 1};
+		state = 37 : {0, 1};
 		1 : lid;
 	};
-	next(gotMutex) := case {
-		state = lct_acquiring & !client_state.lockMap[lid].lock : 1;
-		1 : gotMutex;
+	-- specify the transitions
+	next(state) := switch(state) {
+		36 : {36, 37};
+		37 : 56;
+		56 : !getLock ? 58 : 130;
+		58 : !client_state.lockMap[lid].lock ? 59 : 58;	-- wait for mutex
+		59 : !thrNumIncreased ? 61 : 64;
+		61 : 64;	-- leave a cycle to make some var updated, not worthless
+		64 : switch(client_state.lockMap[lid].status) {
+				releasing : 69;
+				acquiring : 69;
+				hold : 69;
+				not_hold : 75;
+				free : 123;
+			};
+		69 : (client_state.lockMap[lid].acqCond & !client_state.lockMap[lid].lock) ? 71 : 69;
+		71 : 128;
+		75 : 78;
+		78 : 80;
+		80 : server_lct_channel.return.ready ? 81 : 80;
+		81 : !client_state.lockMap[lid].lock ? 83 : 81;
+		83 : (ret = lock_protocol_ok | client_state.lockMap[lid].gotRevoke) ? 84 : 89;
+		84 : 128;
+		89 : (ret = lock_protocol_retry) ? 91 : 113;
+		91 : (client_state.lockMap[lid].gotRetry) ? 94 : 102;
+		94 : 109;
+		102 :
+		109 :
+		113 : 
+		default : state;
+	};
+	next(ret) := switch(state) {
+		37 : lock_protocol_ok;
+		80 : server_lct_channel.return.ready ? server_lct_channel.return.acquire_ret : ret;
+		84 : lock_protocol_ok;
+		default : ret;
 	};
 	next(client_state.lockMap[lid].lock) := case {
-		state = lct_acquiring & !client_state.lockMap[lid].lock : 1;
+		state = 58 & !client_state.lockMap[lid].lock : 1;
+		state = 78 : 0;
+		state = 81 & !client_state.lockMap[lid].lock : 1;
 		1 : client_state.lockMap[lid].lock;
 	};
-	next(thrNumIncreased) := (!thrNumIncreased & gotLock) ? 1 : thrNumIncreased;
-	next(client_state.lockMap[lid].threadNum) := (!thrNumIncreased & gotLock) ? client_state.lockMap[lid].threadNum + 1 : client_state.lockMap[lid].threadNum;
-	next(gotLock) := case {
-		(client_state.lockMap[lid].status = releasing | client_state.lockMap[lid].status = acquiring |
-		client_state.lockMap[lid].status = hold) : 
-	}
+	next(thrNumIncreased) := (state = 61) ? 1 : thrNumIncreased;
+	next(client_state.lockMap[lid].threadNum) := (state = 61) ? client_state.lockMap[lid].threadNum + 1 : client_state.lockMap[lid].threadNum;
+	next(client_state.lockMap[lid].acqCond) := (state = 69 & client_state.lockMap[lid].acqCond & !client_state.lockMap[lid].lock) ? 0 : client_state.lockMap[lid].acqCond;
+	next(getLock) := switch(state) {
+		71 : 0;
+		84 : 1;
+		default : getLock;
+	};
+	next(client_state.lockMap[lid].status) := switch(state) {
+		75 : acquiring;
+		84 : hold;
+		94 : hold;
+		default : client_state.lockMap[lid].status;
+	};
+	next(lct_server_channel.call.procedure_id) := switch(state) {
+		80 : lock_protocol_acquire;
+		default : lct_server_channel.call.procedure_id;
+	};
+	next(lct_server_channel.call.lid) := switch(state) {
+		80 : lid;
+		default : lct_server_channel.call.lid;
+	};
+	next(lct_server_channel.call.id) := switch(state) {
+		80 : client_state.id;
+		default : lct_server_channel.call.id;
+	};
+	next(lct_server_channel.call.ready) := switch(state) {
+		80 : !server_lct_channel.return.ready ? 1 : lct_server_channel.call.ready;	-- wait for server response and maintain the ready bit, until server resets the bit
+		default : lct_server_channel.call.ready;
+	};
+	next(server_lct_channel.return.ready) := switch(state) {
+		80 : server_lct_channel.return.ready ? 0 : server_lct_channel.return.ready;	-- reset the ready bit as soon as it's 'ready'
+		default : server_lct_channel.return.ready;
+	};
+	next(client_state.lockMap[lid].gotRetry) := switch(state) {
+		84 : 0;
+		94 : 0;
+		default : client_state.lockMap[lid].gotRetry;
+	};
 }
