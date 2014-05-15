@@ -46,16 +46,17 @@ MODULE sleeper(cv, mutex)
 	next(cond_state) := case {
 		state = 1 & !mutex : prepare;	-- leave one cycle to update cond and release mutex
 		cond_state = prepare : wait;
-		1 : cond_state; 
+		cond_state = wait & cv.wake_ok & !mutex : free;
+		1 : cond_state;
 	};
 	next(cv.wake_ok) := case {
 		cond_state = prepare & cv.wait_num = 0 : 0;	-- reset cond if it's head of waiting list
-		cond_state = wait & cv.wake_ok & !mutex = 0 : 0;	-- reset cond if it has consumed the wake-up signal
+		cond_state = wait & cv.wake_ok & !mutex : 0;	-- reset cond if it has consumed the wake-up signal
 		1 : cv.wake_ok;
 	};
 	next(cv.wait_num) := case {
 		cond_state = prepare : cv.wait_num + 1;
-		cond_state = wait & cv.wake_ok & !mutex = 0 : cv.wait_num - 1;
+		cond_state = wait & cv.wake_ok & !mutex : cv.wait_num - 1;
 		1 : cv.wait_num;
 	};
 
