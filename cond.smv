@@ -8,10 +8,13 @@ MODULE main()
 	init(cv.wait_num) := 0;
 
 	waker : process waker(cv.wake_ok);
-	sleepers : array 0 .. 1 of process sleeper(cv, mutex);
+	sleepers : array 0 .. 2 of process sleeper(cv, mutex);
 
 SPEC
-	!EF (sleepers[0].state = 3 & sleepers[1].state = 3);
+	!EF (sleepers[0].state = 3 & sleepers[1].state = 3)
+	&& !EF (sleepers[0].state = 3 & sleepers[2].state = 3)
+	&& !EF (sleepers[1].state = 3 & sleepers[2].state = 3)
+	&& AG(sleepers[0].state = 1 -> EF(sleepers[0].state = 0));
 }
 
 MODULE waker(wake_ok)
@@ -30,10 +33,10 @@ MODULE sleeper(cv, mutex)
 	init(cond_state) := free;
 
 	next(state) := switch(state) {
-		0 : 1;
+		0 : {0, 1};
 		1 : !mutex ? 2 : 1;	-- acquiring mutex
 		2 : cond_state = free ? 3 : 2;
-		3 : 4;
+		3 : {3, 4};
 		4 : 0;
 	};
 	next(mutex) := case {
