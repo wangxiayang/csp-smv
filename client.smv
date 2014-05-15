@@ -3,7 +3,7 @@ MODULE main()
 	
 }
 
-typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr}
+typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
 typedef server_to_lct struct {
 	call : struct {
 
@@ -43,7 +43,7 @@ MODULE lock_client()
 	lct_server_channels : array 0 .. 3 of lct_to_server;
 	server_lct_channels : array 0 .. 3 of server_to_lct;
 	threads : array 0 .. 3;
-	for(i = 0; i < 4; i++)
+	for(i = 0; i < 4; i = i + 1)
 		threads[i] : process lc_thread(client_state, server_lct_channels[i], lct_server_channels[i]);
 }
 
@@ -100,9 +100,9 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 		89 : (ret = lock_protocol_retry) ? 91 : 113;
 		91 : (client_state.lockMap[lid].gotRetry) ? 94 : 102;
 		94 : 109;
-		102 :
-		109 :
-		113 : 
+		102 : 113;
+		109 : 113;
+		113 : 128;
 		default : state;
 	};
 	next(ret) := switch(state) {
@@ -113,6 +113,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	};
 	next(client_state.lockMap[lid].lock) := case {
 		state = 58 & !client_state.lockMap[lid].lock : 1;
+		state = 69 : client_state.lockMap[lid].acqCond ? ;
 		state = 78 : 0;
 		state = 81 & !client_state.lockMap[lid].lock : 1;
 		1 : client_state.lockMap[lid].lock;
@@ -155,5 +156,15 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 		84 : 0;
 		94 : 0;
 		default : client_state.lockMap[lid].gotRetry;
+	};
+}
+
+MODULE pthread_cond_wait(in_valid, out_valid, cond, mutex)
+{
+	state : {free, waiting};
+	next(state) := case {
+		state = free & in_valid : waiting;
+		state = waiting & 
+		1 : state;
 	};
 }

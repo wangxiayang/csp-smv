@@ -1,36 +1,70 @@
 MODULE main()
 {
-	wake_ok : boolean;
-	semaphore : boolean;
+	mutex : boolean;
+	cv : cond_t;
 
-	waker : process waker(wake_ok);
-	sleepers : array 0 .. 3 of process sleeper(wake_ok, semaphore);
+	init(mutex) := 0;
+	init(cv.wake_ok) := 0;
+	init(cv.wait_num) := 0;
+
+	waker : process waker(cv.wake_ok);
+	sleepers : array 0 .. 1 of process sleeper(cv, mutex);
 
 SPEC
-	!EF sleepers[0].state = done;
+	!EF (sleepers[0].state = 3 & sleepers[1].state = 3);
 }
 
 MODULE waker(wake_ok)
 {
-	init(wake_ok) := 0;
-	next(wake_ok) := wake_ok ? 1 : {0, 1};
+	next(wake_ok) := 1;
+FAIRNESS
+	running;
 }
 
-MODULE sleeper(wake_ok, semaphore)
+MODULE sleeper(cv, mutex)
 {
-	state : {not_hold, requiring, hold, releasing, done};
-	init(state) := not_hold;
-	next(state) := case {
-		state = not_hold : {not_hold, requiring};
-		state = requiring : (wake_ok & !semaphore) ? hold : requiring;
-		state = hold : {hold, releasing};
-		state = releasing : done;
-		1 : done;
+	state : 0 .. 4;
+	cond_state : {free, prepare, wait};
+
+	init(state) := 0;
+	init(cond_state) := free;
+
+	next(state) := switch(state) {
+		0 : 1;
+		1 : !mutex ? 2 : 1;	-- acquiring mutex
+		2 : cond_state = free ? 3 : 2;
+		3 : 4;
+		4 : 0;
 	};
-	next(semaphore) := case {
-		state = requiring & wake_ok & !semaphore : 1;
-		state = releasing : 0;
-		1 : state;
+	next(mutex) := case {
+		cond_state = prepare : 0;	-- assume that it has already hold the mutex, force to release
+		cond_state = wait & cv.wake_ok & !mutex : 1;
+		state = 1 & !mutex : 1;
+		state = 4 : 0;
+		1 : mutex;
 	};
-	next(wake_ok) := state = (requiring & wake_ok & !semaphore) ? 0 : wake_ok;
+	next(cond_state) := case {
+		state = 1 & !mutex : prepare;	-- leave one cycle to update cond and release mutex
+		cond_state = prepare : wait;
+		1 : cond_state; 
+	};
+	next(cv.wake_ok) := case {
+		cond_state = prepare & cv.wait_num = 0 : 0;	-- reset cond if it's head of waiting list
+		cond_state = wait & cv.wake_ok & !mutex = 0 : 0;	-- reset cond if it has consumed the wake-up signal
+		1 : cv.wake_ok;
+	};
+	next(cv.wait_num) := case {
+		cond_state = prepare : cv.wait_num + 1;
+		cond_state = wait & cv.wake_ok & !mutex = 0 : cv.wait_num - 1;
+		1 : cv.wait_num;
+	};
+
+
+FAIRNESS
+	running;
+}
+
+typedef cond_t struct {
+	wake_ok : boolean;
+	wait_num : 0 .. 5;
 }

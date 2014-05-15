@@ -1,0 +1,35 @@
+MODULE main()
+{
+	a : 0 .. 10;
+	b : 0 .. 10;
+	init(a) := 0;
+	init(b) := 0;
+
+	p1 : process q(a, b);
+	p2 : process p(a, b);
+
+SPEC
+	!EF (a = 3 & b = 5);
+}
+
+MODULE updater2(c)
+{
+	next(c) := c + 2;
+}
+
+MODULE updater1(a)
+{
+	next(a) := a + 1;
+}
+
+MODULE p(a, b)
+{
+	u1 : updater1(a);
+	u2 : updater2(b);
+}
+
+MODULE q(a, b)
+{
+	u1 : updater1(a);
+	u2 : updater1(b);
+}
