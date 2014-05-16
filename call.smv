@@ -1,18 +1,18 @@
 MODULE main()
 {
-	ctos : array 0 .. 1 of ctos_channel;
-	stoc : array 0 .. 1 of stoc_channel;
+	ctos : array 0 .. 5 of ctos_channel;
+	stoc : array 0 .. 5 of stoc_channel;
 	client : client(stoc, ctos);
 	server : server(ctos, stoc);
 
 SPEC
-	AF (ctos[0].procedure = 3);
+	AG (client.threads[0].state = calling -> EF client.threads[0].state = done);
 }
 
 MODULE client(stoc, ctos)
 {
-	threads : array 0 .. 1;
-	for(i = 0; i < 2; i = i + 1)
+	threads : array 0 .. 5;
+	for(i = 0; i < 6; i = i + 1)
 		threads[i] : process client_thread(stoc[i], ctos[i]);
 }
 
@@ -26,21 +26,16 @@ MODULE client_thread(stoc, ctos)
 		waiting : stoc.ready ? done : waiting;
 		done : before;
 	};
-	init(ctos.procedure) := 0;
-	next(ctos.procedure) := case {
-		state = calling : ctos.procedure + 1;
-		1 : ctos.procedure;
+	init(ctos.arg) := 0;
+	next(ctos.arg) := case {
+		state = calling : ctos.arg + 1;
 	};
 	init(ctos.ready) := 0;
 	next(ctos.ready) := case {
 		state = calling : 1;
-		state = waiting & stoc.received : 0;
-		1 : ctos.ready;
 	};
-	init(ctos.received) := 0;
-	next(ctos.received) := case {
-		state = waiting & stoc.ready : 1;
-		1 : ctos.received;
+	next(stoc.ready) := case {
+		state = waiting & stoc.ready : 0;
 	};
 
 FAIRNESS
@@ -49,8 +44,8 @@ FAIRNESS
 
 MODULE server(ctos, stoc)
 {
-	threads : array 0 .. 1;
-	for(i = 0; i < 2; i = i + 1)
+	threads : array 0 .. 5;
+	for(i = 0; i < 6; i = i + 1)
 		threads[i] : process server_thread(ctos[i], stoc[i]);
 }
 
@@ -61,24 +56,18 @@ MODULE server_thread(ctos, stoc)
 	init(state) := free;
 	next(state) := switch(state) {
 		free : ctos.ready ? returning : free;	-- one cycle job
-		returning : ctos.received ? free : returning;
+		returning : free;
 	};
 	init(stoc.ret) := 7;
 	next(stoc.ret) := case {
-		state = free & ctos.ready : ctos.procedure + 7;
-		1 : stoc.ret;
+		state = free & ctos.ready : ctos.arg + 7;
 	};
 	init(stoc.ready) := 0;
 	next(stoc.ready) := case {
 		state = free & ctos.ready : 1;
-		state = returning & ctos.received : 0;
-		1 : stoc.ready;
 	};
-	init(stoc.received) := 0;
-	next(stoc.received) := case {
-		state = free & ctos.ready : 1;
-		state = returning & ctos.received : 0;
-		1 : stoc.received;
+	next(ctos.ready) := case {
+		state = free & ctos.ready : 0;
 	};
 
 FAIRNESS
@@ -86,13 +75,11 @@ FAIRNESS
 }
 
 typedef ctos_channel struct {
-	received : boolean;
-	procedure : 0 .. 3;
+	arg : 0 .. 3;
 	ready : boolean;
 }
 
 typedef stoc_channel struct {
-	received : boolean;
 	ready : boolean;
 	ret : 7 .. 10;
 }
