@@ -55,28 +55,109 @@ typedef cond_t struct {
 	wait_num : 0 .. 4;
 }
 typedef mutex_t boolean;
-
+typedef list struct {
+	content : array 0 .. 2 of 0 .. 2;
+	size : 0 .. 2;
+}
 
 MODULE lock_server(lct_server_channels, server_lct_channels)
 {
+	server_state : struct {
+		lockMap : array 0 .. 1 of struct {
+			lock : mutex_t;
+			cltId : 0 .. 2;
+			waitingList : list;
+			state : {hold, free};
+		};
+	};
+
+	init(server_state.lockMap[0].lock) := 0;
+	init(server_state.lockMap[0].cltId) := 0;
+	init(server_state.lockMap[0].waitingList.size) := 0;
+	init(server_state.lockMap[0].state) := free;
+	init(server_state.lockMap[1].lock) := 0;
+	init(server_state.lockMap[1].cltId) := 0;
+	init(server_state.lockMap[1].waitingList.size) := 0;
+	init(server_state.lockMap[1].state) := free;
+
 	threads : array 0 .. 2 of array 0 .. 3;
 	for(i = 0; i < 3; i = i + 1) {
 		for(j = 0; j < 4; j = j + 1) {
-			threads[i][j] : process ls_thread(lct_server_channels[i][j], server_lct_channels[i][j]);
+			threads[i][j] : process ls_thread(server_state, lct_server_channels[i][j], server_lct_channels[i][j]);
 		}
 	}
 }
 
-MODULE ls_thread(lct_server_channel, server_lct_channel)
+MODULE ls_thread(server_state, lct_server_channel, server_lct_channels)
 {
 	init(server_lct_channel.return.ready) := 0;
 	init(server_lct_channel.return.acquire_ret) := lock_protocol_ok;
 	init(server_lct_channel.return.release_ret) := lock_protocol_ok;
 
-	next(lct_server_channel.call.ready) := (lct_server_channel.call.ready) ? 0 : lct_server_channel.call.ready;
-	next(server_lct_channel.return.acquire_ret) := (lct_server_channel.call.ready & lct_server_channel.call.procedure_id = lock_protocol_acquire) ? 1 : server_lct_channel.return.acquire_ret;
-	next(server_lct_channel.return.release_ret) := (lct_server_channel.call.ready & lct_server_channel.call.procedure_id = lock_protocol_release) ? 1 : server_lct_channel.return.release_ret;
-	next(server_lct_channel.return.ready) := (lct_server_channel.call.ready) ? 1 : server_lct_channel.return.ready;
+	-- local state
+	state : 32 .. 75;
+	call_state : {free, calling, waiting, done};
+	-- args
+	lid : 0 .. 1;
+	id : 0 .. 2;
+	-- local vars
+	ret : lock_protocol_status;
+
+	init(state) := 32;
+	init(call_state) := free;
+	init(lid) := 0;
+	init(id) := 0;
+	init(ret) := lock_protocol_ok;
+
+	next(state) := switch(state) {
+		32 : lct_server_channel.call.ready ? (switch(lct_server_channel.call.protocol_id) {
+			lock_protocol_acquire : 40;
+			lock_protocol_release : 82;
+			default : 32;
+		}) : 32;
+		40 : !server_state.lockMap[lid].lock : 41 : 40;
+		41 : 42;
+		42 : switch(server_state.lockMap[lid].state) {
+			hold : 44;
+			free : 67;
+		};
+		44 : 45;
+		45 : id = server_state.lockMap[lid].cltId ? 46 : 50;
+		46 : 50;
+		50 : server_state.lockMap[lid].waitingList.size = 1 ? 52 : 63;
+		52 : 57;
+		57 : call_state = done ? 58 : 57;
+	};
+	next(call_state) := switch(call_state) {
+		free : state = 57 ? calling : free;
+		calling : waiting;
+		waiting : done;
+		done : free;
+	};
+	next(lid) := (state = 32 & lct_server_channel.call.ready) ? lct_server_channel.call.lid : lid;
+	next(id) := (state = 32 & lct_server_channel.call.ready) ? lct_server_channel.call.id : id;
+	next(lct_server_channel.call.ready) := (state = 32 & lct_server_channel.call.ready) ? 0 : lct_server_channel.call.ready;
+	next(ret) := switch(state) {
+		41 : lock_protocol_ok;
+		46 : lock_protocol_ok;
+	};
+	next(server_state.lockMap[lid].lock) := switch(state) {
+		40 : !server_state.lockMap[lid].lock ? 1 : server_state.lockMap[lid].lock;
+		52 : 0;
+	};
+	next(server_state.lockMap[lid].waitingList.size) := switch(state) {
+		44 : server_state.lockMap[lid].waitingList.size + 1;
+		46 : server_state.lockMap[lid].waitingList.size - 1;
+	};
+	next(server_state.lockMap[lid].waitingList.content[0]) := switch(state) {
+		44 : server_state.lockMap[lid].waitingList.size = 0 ? id : server_state.lockMap[lid].waitingList.content[0];
+	};
+	next(server_state.lockMap[lid].waitingList.content[1]) := switch(state) {
+		44 : server_state.lockMap[lid].waitingList.size = 1 ? id : server_state.lockMap[lid].waitingList.content[1];
+	};
+	next(server_state.lockMap[lid].waitingList.content[2]) := switch(state) {
+		44 : server_state.lockMap[lid].waitingList.size = 2 ? id : server_state.lockMap[lid].waitingList.content[2];
+	};
 }
 
 MODULE lock_client(id_arrange, server_lct_channels, lct_server_channels)
