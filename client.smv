@@ -1,6 +1,8 @@
 MODULE main()
 {
-	
+	clients : array 0 .. 2;
+	for(i = 0; i < 3; i = i + 1)
+		clients[i] : lock_client;
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -30,15 +32,17 @@ MODULE lock_client()
 	client_state : struct {
 		lockMap : array 0 .. 1 of struct {
 			threadNum : 0 .. 4;
-			lockStatus : {hold, acquiring, releasing, not_hold, free};
-			gotRevoke : boolean;
-			gotRetry : boolean;
 			lock : mutex_t;
 			acqCond : cond_t;
-			retry : cond_t;
+			retryCond : cond_t;
+			status : {hold, acquiring, releasing, not_hold, free};
+			gotRevoke : boolean;
+			gotRetry : boolean;
 		};
 		id : 0 .. 5;
 	};
+
+	init(client_state.lockMap[0].threadNum) := 0;
 
 	lct_server_channels : array 0 .. 3 of lct_to_server;
 	server_lct_channels : array 0 .. 3 of server_to_lct;
@@ -157,6 +161,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	next(client_state.lockMap[lid].acqCond.wake_ok) := case {
 		state = 69 & cond_state = prepare & client_state.lockMap[lid].acqCond.wait_num = 0 : 0;
 		state = 69 & cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : 0;
+		state = 113 : 1;
 		1 : client_state.lockMap[lid].acqCond.wake_ok;
 	};
 	next(client_state.lockMap[lid].retryCond.wake_ok) := case {
@@ -217,5 +222,4 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 		103 : 0;
 		default : client_state.lockMap[lid].gotRetry;
 	};
-	next(client_state.lockMap[lid].acqCond.wake_ok) := (state = 113) ? 1 : client_state.lockMap[lid].acqCond.wake_ok;
 }

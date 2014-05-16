@@ -1,35 +1,32 @@
 MODULE main()
 {
-	a : 0 .. 10;
-	b : 0 .. 10;
-	init(a) := 0;
-	init(b) := 0;
-
-	p1 : process q(a, b);
-	p2 : process p(a, b);
-
-SPEC
-	!EF (a = 3 & b = 5);
+	ctos_channels : array 0 .. 3;
+	for(i = 0; i < 4; i = i + 1)
+		ctos_channels[i] : ctos_channel;
+	stoc_channels : array 0 .. 3;
+	for(i = 0; i < 4; i = i + 1)
+		stoc_channels[i] : stoc_channel;
 }
 
-MODULE updater2(c)
+MODULE communicator(ins, outs)
 {
-	next(c) := c + 2;
+	
 }
 
-MODULE updater1(a)
+MODULE client(in, out)
 {
-	next(a) := a + 1;
+	
 }
 
-MODULE p(a, b)
+MODULE server(in, out)
 {
-	u1 : updater1(a);
-	u2 : updater2(b);
+	
 }
 
-MODULE q(a, b)
-{
-	u1 : updater1(a);
-	u2 : updater1(b);
+typedef ctos_channel struct {
+	v1 : 0 .. 5;
+}
+
+typedef stoc_channel struct {
+	ret : 6 .. 10;
 }
