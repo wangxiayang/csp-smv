@@ -36,7 +36,12 @@ typedef server_to_lct struct {
 		acquire_ret : lock_protocol_status;
 		release_ret : lock_protocol_status;
 	};
-}
+	client_return : struct {
+		ready : boolean;
+		revoke_ret : lock_protocol_status;
+		retry_ret : lock_protocol_status;
+	};
+}	-- double-link channel
 typedef lct_to_server struct {
 	call : struct {
 		ready : boolean;
@@ -44,12 +49,7 @@ typedef lct_to_server struct {
 		lid : 0 .. 1;
 		id : 0 .. 2;
 	};
-	return : struct {
-		ready : boolean;
-		revoke_ret : lock_protocol_status;
-		retry_ret : lock_protocol_status;
-	};
-}
+}	-- single-link channel
 
 typedef cond_t struct {
 	wake_ok : boolean;
@@ -59,6 +59,13 @@ typedef mutex_t boolean;
 typedef list struct {
 	content : array 0 .. 2 of 0 .. 2;
 	size : 0 .. 2;
+}
+
+MODULE lc_server_thread(client_state, server_lct_channel, lct_server_channel)
+{
+	-- local state
+	state : 168 .. 214;
+	call_state : {free, calling, waiting};
 }
 
 MODULE lock_server(lct_server_channels, server_lct_channels)
@@ -84,12 +91,12 @@ MODULE lock_server(lct_server_channels, server_lct_channels)
 	threads : array 0 .. 2 of array 0 .. 3;
 	for(i = 0; i < 3; i = i + 1) {
 		for(j = 0; j < 4; j = j + 1) {
-			threads[i][j] : process ls_thread(server_state, lct_server_channels[i][j], server_lct_channels[i][j]);
+			threads[i][j] : process ls_thread(server_state, lct_server_channels[i][j], server_lct_channels[i][j], server_lct_channels);
 		}
 	}
 }
 
-MODULE ls_thread(server_state, lct_server_channel, server_lct_channel)
+MODULE ls_thread(server_state, lct_server_channel, server_lct_channel, server_lct_all_channel)
 {
 	init(server_lct_channel.return.ready) := 0;
 	init(server_lct_channel.return.acquire_ret) := lock_protocol_ok;
@@ -97,10 +104,14 @@ MODULE ls_thread(server_state, lct_server_channel, server_lct_channel)
 	init(server_lct_channel.call.ready) := 0;
 	init(server_lct_channel.call.procedure_id) := rlock_protocol_revoke;
 	init(server_lct_channel.call.lid) := 0;
+	init(server_lct_channel.client_return.ready) := 0;
+	init(server_lct_channel.client_return.retry_ret) := lock_protocol_ok;
+	init(server_lct_channel.client_return.revoke_ret) := lock_protocol_ok;
 
 	-- local state
 	state : 32 .. 122;
 	call_state : {free, calling, waiting, done};
+	callee : 0 .. 2;
 	-- args
 	lid : 0 .. 1;
 	id : 0 .. 2;
@@ -111,6 +122,7 @@ MODULE ls_thread(server_state, lct_server_channel, server_lct_channel)
 
 	init(state) := 32;
 	init(call_state) := free;
+	init(callee) := 0;
 	init(lid) := 0;
 	init(id) := 0;
 	init(ret) := lock_protocol_ok;
@@ -167,8 +179,12 @@ MODULE ls_thread(server_state, lct_server_channel, server_lct_channel)
 	next(call_state) := switch(call_state) {
 		free : (state = 57 | state = 97 | state = 113) ? calling : free;
 		calling : waiting;
-		waiting : lct_server_channel.return.ready ? done : waiting;
+		waiting : server_lct_all_channel[callee][0].client_return.ready ? done : waiting;
 		done : free;
+	};
+	next(callee) := switch(state) {
+		52 : server_state.lockMap[lid].cltId;
+		86 : server_state.lockMap[lid].waitingList.content[0];
 	};
 	next(lid) := (state = 32 & lct_server_channel.call.ready) ? lct_server_channel.call.lid : lid;	-- it works in two methods
 	next(id) := (state = 32 & lct_server_channel.call.ready) ? lct_server_channel.call.id : id;
@@ -182,11 +198,11 @@ MODULE ls_thread(server_state, lct_server_channel, server_lct_channel)
 		101 : lock_protocol_rpcerr;
 	};
 	next(revoke_ret) := case {
-		state = 57 & call_state = waiting & lct_server_channel.return.ready : lct_server_channel.return.revoke_ret;
+		state = 57 & call_state = waiting & server_lct_all_channel[callee][0].client_return.ready : server_lct_all_channel[callee][0].client_return.revoke_ret;
 	};
 	next(retryRet) := case {
-		state = 97 & call_state = waiting & lct_server_channel.return.ready : lct_server_channel.return.retry_ret;
-		state = 113 & call_state = waiting & lct_server_channel.return.ready : lct_server_channel.return.revoke_ret;	-- that's what written in code
+		state = 97 & call_state = waiting & server_lct_all_channel[callee][0].client_return.ready : server_lct_all_channel[callee][0].client_return.retry_ret;
+		state = 113 & call_state = waiting & server_lct_all_channel[callee][0].client_return.ready : server_lct_all_channel[callee][0].client_return.revoke_ret;	-- that's what written in code
 	};
 	next(server_state.lockMap[lid].lock) := switch(state) {
 		40 : !server_state.lockMap[lid].lock ? 1 : server_state.lockMap[lid].lock;
@@ -216,18 +232,18 @@ MODULE ls_thread(server_state, lct_server_channel, server_lct_channel)
 	next(server_state.lockMap[lid].waitingList.content[2]) := switch(state) {
 		44 : server_state.lockMap[lid].waitingList.size = 2 ? id : server_state.lockMap[lid].waitingList.content[2];
 	};
-	next(server_lct_channel.call.ready) := case {
+	next(server_lct_all_channel[callee][0].call.ready) := case {
 		(state = 57 | state = 97 | state = 113) & call_state = calling : 1;
 	};
-	next(server_lct_channel.call.procedure_id) := case {
+	next(server_lct_all_channel[callee][0].call.procedure_id) := case {
 		(state = 57 | state = 113) & call_state = calling : rlock_protocol_revoke;
 		state = 97 & call_state = calling : rlock_protocol_retry;
 	};
-	next(server_lct_channel.call.lid) := case {
+	next(server_lct_all_channel[callee][0].call.lid) := case {
 		(state = 57 | state = 97 | state = 113) & call_state = calling : lid;
 	};
-	next(lct_server_channel.return.ready) := case {
-		(state = 57 | state = 97 | state = 113) & call_state = waiting & lct_server_channel.return.ready : 0;
+	next(server_lct_all_channel[callee][0].client_return.ready) := case {
+		(state = 57 | state = 97 | state = 113) & call_state = waiting & server_lct_all_channel[callee][0].client_return.ready : 0;
 	};
 	next(server_state.lockMap[lid].cltId) := switch(state) {
 		67 : id;
