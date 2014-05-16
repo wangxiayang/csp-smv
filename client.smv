@@ -164,7 +164,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 		145 : 146;
 		146 : call_state = done ? 147 : 146;
 		147 : !client_state.lockMap[lid].lock ? 148 : 147;
-		148 : ret = lock_protocol_ok ? 154 : 149;
+		148 : ret = lock_protocol_ok ? 149 : 154;
 		149 : 160;
 		154 : 160;
 		160 : 36;	-- end of full procedure
