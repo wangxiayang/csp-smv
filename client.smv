@@ -21,7 +21,7 @@ MODULE main()
 	server : lock_server(lct_server_channels, server_lct_channels);
 
 SPEC
-	AG(clients[0].threads[0].state = 37 -> EF (lct_server_channels[0][0].call.ready));
+	AG(clients[0].threads[0].state = 37 -> EF (clients[0].threads[0].state = 36));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -41,13 +41,42 @@ typedef server_to_lct struct {
 typedef lct_to_server struct {
 	call : struct {
 		ready : boolean;
-		procedure_id : {lock_protocol_acquiring, lock_protocol_release};
+		procedure_id : {lock_protocol_acquire, lock_protocol_release};
 		lid : 0 .. 1;
 		id : 0 .. 2;
 	};
 	return : struct {
 
 	};
+}
+
+typedef cond_t struct {
+	wake_ok : boolean;
+	wait_num : 0 .. 4;
+}
+typedef mutex_t boolean;
+
+
+MODULE lock_server(lct_server_channels, server_lct_channels)
+{
+	threads : array 0 .. 2 of array 0 .. 3;
+	for(i = 0; i < 3; i = i + 1) {
+		for(j = 0; j < 4; j = j + 1) {
+			threads[i][j] : process ls_thread(lct_server_channels[i][j], server_lct_channels[i][j]);
+		}
+	}
+}
+
+MODULE ls_thread(lct_server_channel, server_lct_channel)
+{
+	init(server_lct_channel.return.ready) := 0;
+	init(server_lct_channel.return.acquire_ret) := lock_protocol_ok;
+	init(server_lct_channel.return.release_ret) := lock_protocol_ok;
+
+	next(lct_server_channel.call.ready) := (lct_server_channel.call.ready) ? 0 : lct_server_channel.call.ready;
+	next(server_lct_channel.return.acquire_ret) := (lct_server_channel.call.ready & lct_server_channel.call.procedure_id = lock_protocol_acquire) ? 1 : server_lct_channel.return.acquire_ret;
+	next(server_lct_channel.return.release_ret) := (lct_server_channel.call.ready & lct_server_channel.call.procedure_id = lock_protocol_release) ? 1 : server_lct_channel.return.release_ret;
+	next(server_lct_channel.return.ready) := (lct_server_channel.call.ready) ? 1 : server_lct_channel.return.ready;
 }
 
 MODULE lock_client(id_arrange, server_lct_channels, lct_server_channels)
@@ -91,12 +120,6 @@ MODULE lock_client(id_arrange, server_lct_channels, lct_server_channels)
 	for(i = 0; i < 4; i = i + 1)
 		threads[i] : process lc_thread(client_state, server_lct_channels[i], lct_server_channels[i]);
 }
-
-typedef cond_t struct {
-	wake_ok : boolean;
-	wait_num : 0 .. 4;
-}
-typedef mutex_t boolean;
 
 MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 {
@@ -296,19 +319,4 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	next(client_state.lockMap[lid].gotRevoke) := switch(state) {
 		149 : 0;
 	};
-}
-
-MODULE lock_server(lct_server_channels, server_lct_channels)
-{
-	threads : array 0 .. 2 of array 0 .. 3;
-	for(i = 0; i < 3; i = i + 1) {
-		for(j = 0; j < 4; j = j + 1) {
-			threads[i][j] : process ls_thread(lct_server_channels[i][j], server_lct_channels[i][j]);
-		}
-	}
-}
-
-MODULE ls_thread(lct_server_channel, server_lct_channel)
-{
-	
 }
