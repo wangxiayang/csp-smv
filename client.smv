@@ -19,6 +19,9 @@ MODULE main()
 	for(i = 0; i < 3; i = i + 1)
 		clients[i] : lock_client(i, server_lct_channels[i], lct_server_channels[i]);
 	server : lock_server(lct_server_channels, server_lct_channels);
+
+SPEC
+	AG(clients[0].threads[0].state = 37 -> EF (lct_server_channels[0][0].call.ready));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -32,6 +35,7 @@ typedef server_to_lct struct {
 	return : struct {
 		ready : boolean;
 		acquire_ret : lock_protocol_status;
+		release_ret : lock_protocol_status;
 	};
 }
 typedef lct_to_server struct {
@@ -58,7 +62,7 @@ MODULE lock_client(id_arrange, server_lct_channels, lct_server_channels)
 			gotRevoke : boolean;
 			gotRetry : boolean;
 		};
-		id : 0 .. 5;
+		id : 0 .. 2;
 	};
 
 	init(client_state.lockMap[0].threadNum) := 0;
@@ -82,7 +86,6 @@ MODULE lock_client(id_arrange, server_lct_channels, lct_server_channels)
 	init(client_state.lockMap[1].gotRetry) := 0;
 
 	init(client_state.id) := id_arrange;
-
 	
 	threads : array 0 .. 3;
 	for(i = 0; i < 4; i = i + 1)
@@ -117,6 +120,11 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	init(ret) := lock_protocol_ok;
 	init(getLock) := 0;
 	init(thrNumIncreased) := 0;
+
+	init(lct_server_channel.call.ready) := 0;
+	init(lct_server_channel.call.procedure_id) := 0;
+	init(lct_server_channel.call.lid) := 0;
+	init(lct_server_channel.call.id) := client_state.id;
 	
 	-- init real arg when enter the real method, which is state 37 in this case
 	next(lid) := case {
