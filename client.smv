@@ -1,13 +1,32 @@
 MODULE main()
 {
+	-- we have 3 clients and 4 threads for each client
+	-- so it's a 3 * 4 metrix
+	lct_server_channels : array 0 .. 2 of array 0 .. 3;
+	for(i = 0; i < 3; i = i + 1) {
+		for(j = 0; j < 4; j = j + 1) {
+			lct_server_channels[i][j] : lct_to_server;
+		}
+	}
+	server_lct_channels : array 0 .. 2 of array 0 .. 3;
+	for(i = 0; i < 3; i = i + 1) {
+		for(j = 0; j < 4; j = j + 1) {
+			server_lct_channels[i][j] : server_to_lct;
+		}
+	}
+
 	clients : array 0 .. 2;
 	for(i = 0; i < 3; i = i + 1)
-		clients[i] : lock_client;
+		clients[i] : lock_client(i, server_lct_channels[i], lct_server_channels[i]);
+	server : lock_server(lct_server_channels, server_lct_channels);
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
 typedef server_to_lct struct {
-	call : struct {
+	retry : struct {
+
+	};
+	revoke : struct {
 
 	};
 	return : struct {
@@ -27,7 +46,7 @@ typedef lct_to_server struct {
 	};
 }
 
-MODULE lock_client()
+MODULE lock_client(id_arrange, server_lct_channels, lct_server_channels)
 {
 	client_state : struct {
 		lockMap : array 0 .. 1 of struct {
@@ -43,9 +62,28 @@ MODULE lock_client()
 	};
 
 	init(client_state.lockMap[0].threadNum) := 0;
+	init(client_state.lockMap[0].lock) := 0;
+	init(client_state.lockMap[0].acqCond.wake_ok) := 0;
+	init(client_state.lockMap[0].acqCond.wait_num) := 0;
+	init(client_state.lockMap[0].retryCond.wake_ok) := 0;
+	init(client_state.lockMap[0].retryCond.wait_num) := 0;
+	init(client_state.lockMap[0].status) := free;
+	init(client_state.lockMap[0].gotRevoke) := 0;
+	init(client_state.lockMap[0].gotRetry) := 0;
 
-	lct_server_channels : array 0 .. 3 of lct_to_server;
-	server_lct_channels : array 0 .. 3 of server_to_lct;
+	init(client_state.lockMap[1].threadNum) := 0;
+	init(client_state.lockMap[1].lock) := 0;
+	init(client_state.lockMap[1].acqCond.wake_ok) := 0;
+	init(client_state.lockMap[1].acqCond.wait_num) := 0;
+	init(client_state.lockMap[1].retryCond.wake_ok) := 0;
+	init(client_state.lockMap[1].retryCond.wait_num) := 0;
+	init(client_state.lockMap[1].status) := free;
+	init(client_state.lockMap[1].gotRevoke) := 0;
+	init(client_state.lockMap[1].gotRetry) := 0;
+
+	init(client_state.id) := id_arrange;
+
+	
 	threads : array 0 .. 3;
 	for(i = 0; i < 4; i = i + 1)
 		threads[i] : process lc_thread(client_state, server_lct_channels[i], lct_server_channels[i]);
@@ -222,4 +260,19 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 		103 : 0;
 		default : client_state.lockMap[lid].gotRetry;
 	};
+}
+
+MODULE lock_server(lct_server_channels, server_lct_channels)
+{
+	threads : array 0 .. 2 of array 0 .. 3;
+	for(i = 0; i < 3; i = i + 1) {
+		for(j = 0; j < 4; j = j + 1) {
+			threads[i][j] : process ls_thread(lct_server_channels[i][j], server_lct_channels[i][j]);
+		}
+	}
+}
+
+MODULE ls_thread(lct_server_channel, server_lct_channel)
+{
+	
 }

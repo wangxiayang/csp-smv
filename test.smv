@@ -1,32 +1,23 @@
 MODULE main()
 {
-	ctos_channels : array 0 .. 3;
-	for(i = 0; i < 4; i = i + 1)
-		ctos_channels[i] : ctos_channel;
-	stoc_channels : array 0 .. 3;
-	for(i = 0; i < 4; i = i + 1)
-		stoc_channels[i] : stoc_channel;
+	args : array 0 .. 1 of arg;
+	client : client(args);
 }
 
-MODULE communicator(ins, outs)
+MODULE client(args)
 {
-	
+	threads : array 0 .. 1;
+	for(i = 0; i < 2; i = i + 1)
+		threads[i] : process client_thread(args[i]);
 }
 
-MODULE client(in, out)
+MODULE client_thread(arg)
 {
-	
+	init(arg.a) := 0;
+	next(arg.a) := !arg.a;
 }
 
-MODULE server(in, out)
-{
-	
-}
-
-typedef ctos_channel struct {
-	v1 : 0 .. 5;
-}
-
-typedef stoc_channel struct {
-	ret : 6 .. 10;
+typedef arg struct {
+	a : boolean;
+	b : boolean;
 }
