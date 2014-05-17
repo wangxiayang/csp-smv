@@ -3,7 +3,7 @@ MODULE main()
 	clients : lock_client(0);
 
 SPEC
-	AG(clients.threads.state = 37 -> EF (clients.threads.state = 56));
+	AG(clients.threads.state = 36 & clients.threads.state ~= 36);
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
