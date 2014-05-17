@@ -6,7 +6,7 @@ MODULE main()
 	server : lock_server(lct_server_channels, server_lct_channels);
 
 SPEC
-	AG(EF (clients.threads.state = 38));
+	AG(clients.threads.state = 36 -> !(EF clients.threads.state = 37));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -327,7 +327,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	init(thrNumIncreased) := 0;
 
 	init(lct_server_channel.call.ready) := 0;
-	init(lct_server_channel.call.procedure_id) := 0;
+	init(lct_server_channel.call.procedure_id) := lock_protocol_acquire;
 	init(lct_server_channel.call.lid) := 0;
 	init(lct_server_channel.call.id) := client_state.id;
 	
