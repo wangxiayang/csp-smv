@@ -101,9 +101,9 @@ MODULE lc_callback_thread(client_state, server_lct_channel, lct_server_channel)
 		default : state;
 	};
 	next(call_state) := switch(call_state) {
-		free : state = 179 ? calling : free;
+		free : state = 179 ? calling;
 		calling : waiting;
-		waiting : server_lct_channel.return.ready ? done : waiting;
+		waiting : server_lct_channel.return.ready ? done;
 		done : free;
 		default : call_state;
 	};
@@ -472,48 +472,41 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	};
 	-- specify the transitions
 	next(state) := switch(state) {
-		36 : {36, 37};	-- acquiring the lock
+		36 : 37;	-- acquiring the lock
 		37 : 56;
-		56 : !getLock ? 58 : 130;
-		58 : !client_state.lockMap[lid].lock ? 59 : 58;	-- wait for mutex
-		59 : !thrNumIncreased ? 61 : 64;
+		56 : 58;
+		58 : 59;	-- wait for mutex
+		59 : 61;
 		61 : 64;	-- leave a cycle to make some var updated, not worthless(though it can be reduced)
-		64 : switch(client_state.lockMap[lid].status) {
-				releasing : 69;
-				acquiring : 69;
-				hold : 69;
-				not_hold : 75;
-				free : 123;
-				default : 36;
-			};
-		69 : (cond_state = done) ? 71 : 69;
-		71 : 128;
+		64 : 69;
+		69 : 71;
+		71 : 75;
 		75 : 78;
 		78 : 80;
-		80 : call_state = done ? 81 : 80;
-		81 : !client_state.lockMap[lid].lock ? 83 : 81;
-		83 : (ret = lock_protocol_ok | client_state.lockMap[lid].gotRevoke) ? 84 : 89;
-		84 : 128;
-		89 : (ret = lock_protocol_retry) ? 91 : 113;
-		91 : (client_state.lockMap[lid].gotRetry) ? 94 : 102;
-		94 : 109;
-		102 : (cond_state = done) ? 103 : 102;
+		80 : 81;
+		81 : 83;
+		83 : 84;
+		84 : 89;
+		89 : 91;
+		91 : 94;
+		94 : 102;
+		102 : 103;
 		103 : 109;
 		109 : 128;
 		113 : 128;
 		123 : 128;
 		128 : 56;
 		130 : 136;
-		136 : {136, 137};	-- releasing the lock
+		136 : 137;	-- releasing the lock
 		137 : 138;
-		138 : !client_state.lockMap[lid].lock ? 139 : 138;
+		138 : 139;
 		139 : 142;
-		142 : (client_state.lockMap[lid].threadNum = 0 & client_state.lockMap[lid].gotRevoke) ? 143 : 160;
+		142 : 143;
 		143 : 145;
 		145 : 146;
-		146 : call_state = done ? 147 : 146;
-		147 : !client_state.lockMap[lid].lock ? 148 : 147;
-		148 : ret = lock_protocol_ok ? 149 : 154;
+		146 : 147;
+		147 : 148;
+		148 : 149;
 		149 : 160;
 		154 : 160;
 		160 : 36;	-- end of full procedure
