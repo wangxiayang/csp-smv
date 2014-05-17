@@ -6,7 +6,7 @@ MODULE main()
 	server : lock_server(lct_server_channels, server_lct_channels);
 
 SPEC
-	AG(clients.threads.state = 36 -> !(EF clients.threads.state = 37));
+	AG(clients.threads.state = 36 -> (AF clients.threads.state = 160));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -401,7 +401,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 		1 : cond_state;
 	};
 	next(call_state) := switch(call_state) {
-		free : (state = 80 | state = 146) ? calling;
+		free : (state = 80 | state = 146) ? calling : free;
 		calling : waiting;
 		waiting : (state = 80 | state = 146) & server_lct_channel.return.ready ? done : waiting;
 		done : free;

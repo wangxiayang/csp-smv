@@ -3,7 +3,7 @@ MODULE main()
 	clients : lock_client(0);
 
 SPEC
-	AG(clients.threads.state = 37 -> EF (clients.threads.state = 160));
+	AG(clients.threads.state = 37 -> (EF clients.threads.state = 160));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -114,12 +114,12 @@ MODULE lc_thread(client_state)
 		94 : 109;
 		102 : (cond_state = done) ? 103 : 102;
 		103 : 109;
-		109 : 113;
-		113 : 123;
+		109 : 128;
+		113 : 128;
 		123 : 128;
 		128 : 56;
 		130 : 136;
-		136 : 137;	-- releasing the lock
+		136 : 136;	-- releasing the lock
 		137 : 138;
 		138 : !client_state.lockMap[lid].lock ? 139 : 138;
 		139 : 142;
@@ -151,7 +151,7 @@ MODULE lc_thread(client_state)
 		1 : cond_state;
 	};
 	next(call_state) := switch(call_state) {
-		free : (state = 80 | state = 146) ? calling : free;
+		free : (state = 80 | state = 146) ? calling;
 		calling : waiting;
 		waiting : (state = 80 | state = 146) ? done : waiting;
 		done : free;
