@@ -19,7 +19,7 @@ MODULE main()
 	server : lock_server(lct_server_channels, server_lct_channels);
 
 SPEC
-	AG(clients.threads[0].state = 36);
+	AG(clients.threads[0].state = 36 -> AF (clients.threads[0].state = 37));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};

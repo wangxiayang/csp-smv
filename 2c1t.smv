@@ -21,7 +21,7 @@ MODULE main()
 	server : lock_server(lct_server_channels, server_lct_channels);
 
 SPEC
-	AG(clients[0].threads.state = 36 -> !EF (clients[0].threads.state = 37));
+	AG(clients[0].threads.state = 36 -> EF (clients[0].threads.state = 37));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -103,9 +103,9 @@ MODULE lc_callback_thread(client_state, server_lct_channel, lct_server_channel)
 		default : state;
 	};
 	next(call_state) := switch(call_state) {
-		free : state = 179 ? calling;
+		free : state = 179 ? calling : free;
 		calling : waiting;
-		waiting : server_lct_channel.return.ready ? done;
+		waiting : server_lct_channel.return.ready ? done : waiting;
 		done : free;
 		default : call_state;
 	};
