@@ -1,0 +1,228 @@
+MODULE main()
+{
+	client_state : struct {
+		lockMap : array 0 .. 1 of struct {
+			threadNum : 0 .. 4;
+			lock : mutex_t;
+			acqCond : cond_t;
+			retryCond : cond_t;
+			status : {hold, acquiring, releasing, not_hold, free};
+			gotRevoke : boolean;
+			gotRetry : boolean;
+		};
+		id : 0 .. 2;
+	};
+
+	init(client_state.lockMap[0].threadNum) := 0;
+	init(client_state.lockMap[0].lock) := 0;
+	init(client_state.lockMap[0].acqCond.wake_ok) := 0;
+	init(client_state.lockMap[0].acqCond.wait_num) := 0;
+	init(client_state.lockMap[0].retryCond.wake_ok) := 0;
+	init(client_state.lockMap[0].retryCond.wait_num) := 0;
+	init(client_state.lockMap[0].status) := free;
+	init(client_state.lockMap[0].gotRevoke) := 0;
+	init(client_state.lockMap[0].gotRetry) := 0;
+
+	init(client_state.lockMap[1].threadNum) := 0;
+	init(client_state.lockMap[1].lock) := 0;
+	init(client_state.lockMap[1].acqCond.wake_ok) := 0;
+	init(client_state.lockMap[1].acqCond.wait_num) := 0;
+	init(client_state.lockMap[1].retryCond.wake_ok) := 0;
+	init(client_state.lockMap[1].retryCond.wait_num) := 0;
+	init(client_state.lockMap[1].status) := free;
+	init(client_state.lockMap[1].gotRevoke) := 0;
+	init(client_state.lockMap[1].gotRetry) := 0;
+
+	init(client_state.id) := 0;
+	
+	threads : process lc_thread(client_state);
+
+SPEC
+	EF(threads.state = 37 -> threads.state = 56);
+}
+
+typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
+
+typedef cond_t struct {
+	wake_ok : boolean;
+	wait_num : 0 .. 4;
+}
+typedef mutex_t boolean;
+typedef list struct {
+	content : array 0 .. 2 of 0 .. 2;
+	size : 0 .. 2;
+}
+
+MODULE lc_thread(client_state)
+{
+	-- args of the real acquire method
+	lid : 0 .. 1;
+
+	-- state var of client instance
+	state : 37 .. 160;	-- use source code line number to indicate state
+	cond_state : {free, prepare, wait, done};
+	call_state : {free, calling, waiting, done};
+	-- local vars
+	ret : lock_protocol_status;
+	thrNumIncreased : boolean;
+	getLock : boolean;
+
+	-- init the local vars and args
+	init(lid) := 0;
+	init(state) := 37;
+	init(cond_state) := free;
+	init(call_state) := free;
+	init(ret) := lock_protocol_ok;
+	init(getLock) := 0;
+	init(thrNumIncreased) := 0;
+	
+	-- init real arg when enter the real method, which is state 37 in this case
+	next(lid) := case {
+		state = 37 : {0, 1};
+	};
+	-- specify the transitions
+	next(state) := switch(state) {
+		37 : 56;
+		56 : !getLock ? 58 : 130;
+		58 : !client_state.lockMap[lid].lock ? 59 : 58;	-- wait for mutex
+		59 : !thrNumIncreased ? 61 : 64;
+		61 : 64;	-- leave a cycle to make some var updated, not worthless(though it can be reduced)
+		64 : switch(client_state.lockMap[lid].status) {
+				releasing : 69;
+				acquiring : 69;
+				hold : 69;
+				not_hold : 75;
+				free : 123;
+			};
+		69 : (cond_state = done) ? 71 : 69;
+		71 : 128;
+		75 : 78;
+		78 : 80;
+		80 : call_state = done ? 81 : 80;
+		81 : !client_state.lockMap[lid].lock ? 83 : 81;
+		83 : (ret = lock_protocol_ok | client_state.lockMap[lid].gotRevoke) ? 84 : 89;
+		84 : 128;
+		89 : (ret = lock_protocol_retry) ? 91 : 113;
+		91 : (client_state.lockMap[lid].gotRetry) ? 94 : 102;
+		94 : 109;
+		102 : (cond_state = done) ? 103 : 102;
+		103 : 109;
+		109 : 128;
+		113 : 128;
+		123 : 128;
+		128 : !getLock ? 58 : 130;
+		130 : 136;
+		136 : {136, 137};	-- releasing the lock
+		137 : 138;
+		138 : !client_state.lockMap[lid].lock ? 139 : 138;
+		139 : 142;
+		142 : (client_state.lockMap[lid].threadNum = 0 & client_state.lockMap[lid].gotRevoke) ? 143 : 160;
+		143 : 145;
+		145 : 146;
+		146 : call_state = done ? 147 : 146;
+		147 : !client_state.lockMap[lid].lock ? 148 : 147;
+		148 : ret = lock_protocol_ok ? 149 : 154;
+		149 : 160;
+		154 : 160;
+		160 : 37;	-- end of full procedure
+	};
+	next(cond_state) := case {
+		cond_state = prepare : wait;	-- leave one cycle to let some other vars be updated
+		cond_state = done : free;
+		state = 69 : case {
+			cond_state = free : prepare;
+			cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : done;
+		};
+		state = 102 : case {
+			cond_state = free : prepare;
+			cond_state = wait & client_state.lockMap[lid].retryCond.wake_ok & !client_state.lockMap[lid].lock : done;
+		};
+	};
+	next(call_state) := switch(call_state) {
+		free : (state = 80 | state = 146) ? calling;
+		calling : waiting;
+		waiting : done;
+		done : free;
+	};
+	next(ret) := switch(state) {
+		37 : lock_protocol_ok;
+		80 : call_state = waiting ? lock_protocol_ok : ret;
+		84 : lock_protocol_ok;
+		109 : lock_protocol_ok;
+		137 : lock_protocol_ok;
+		146 : call_state = waiting ? lock_protocol_ok : ret;
+	};
+	next(client_state.lockMap[lid].lock) := case {
+		state = 58 & !client_state.lockMap[lid].lock : 1;
+		state = 69 : case {
+			cond_state = prepare : 0;
+			cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : 1;
+		};
+		state = 102 : case {
+			cond_state = prepare : 0;
+			cond_state = wait & client_state.lockMap[lid].retryCond.wake_ok & !client_state.lockMap[lid].lock : 1;
+		};
+		state = 78 : 0;
+		state = 81 & !client_state.lockMap[lid].lock : 1;
+		state = 128 : 0;
+		state = 138 & !client_state.lockMap[lid].lock : 1;
+		state = 145 : 0;
+		state = 147 & !client_state.lockMap[lid].lock : 1;
+		state = 160 : 0;
+	};
+	next(thrNumIncreased) := switch(state) {
+		37 : 0;
+		61 : 1;
+	};
+	next(client_state.lockMap[lid].threadNum) := switch(state) {
+		61 : client_state.lockMap[lid].threadNum + 1;
+		113 : client_state.lockMap[lid].threadNum - 1;
+		139 : client_state.lockMap[lid].threadNum - 1;
+	};
+	next(client_state.lockMap[lid].acqCond.wake_ok) := case {
+		state = 69 & cond_state = prepare & client_state.lockMap[lid].acqCond.wait_num = 0 : 0;
+		state = 69 & cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : 0;
+		state = 113 : 1;
+		state = 160 : 1;
+	};
+	next(client_state.lockMap[lid].retryCond.wake_ok) := case {
+		state = 102 & cond_state = prepare & client_state.lockMap[lid].retryCond.wait_num = 0 : 0;
+		state = 102 & cond_state = wait & client_state.lockMap[lid].retryCond.wake_ok & !client_state.lockMap[lid].lock : 0;
+	};
+	next(client_state.lockMap[lid].acqCond.wait_num) := case {
+		state = 69 & cond_state = prepare : client_state.lockMap[lid].acqCond.wait_num + 1;
+		state = 69 & cond_state = wait & client_state.lockMap[lid].acqCond.wake_ok & !client_state.lockMap[lid].lock : client_state.lockMap[lid].acqCond.wait_num - 1;
+	};
+	next(client_state.lockMap[lid].retryCond.wait_num) := case {
+		state = 102 & cond_state = prepare : client_state.lockMap[lid].retryCond.wait_num + 1;
+		state = 102 & cond_state = wait & client_state.lockMap[lid].retryCond.wake_ok & !client_state.lockMap[lid].lock : client_state.lockMap[lid].retryCond.wait_num - 1;
+	};
+	next(getLock) := switch(state) {
+		37 : 0;
+		71 : 0;
+		84 : 1;
+		109 : 1;
+		113 : 1;
+		123 : 1;
+	};
+	next(client_state.lockMap[lid].status) := switch(state) {
+		75 : acquiring;
+		84 : hold;
+		94 : hold;
+		103 : hold;
+		113 : not_hold;
+		123 : hold;
+		139 : free;
+		143 : releasing;
+		149 : not_hold;
+	};
+	next(client_state.lockMap[lid].gotRetry) := switch(state) {
+		84 : 0;
+		94 : 0;
+		103 : 0;
+		149 : 0;
+	};
+	next(client_state.lockMap[lid].gotRevoke) := switch(state) {
+		149 : 0;
+	};
+}

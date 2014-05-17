@@ -1,0 +1,22 @@
+MODULE main()
+{
+	client : process client();
+
+SPEC
+	!EF(client.state = 160 & client.state ~= 160);
+}
+
+MODULE client()
+{
+	state : 37 .. 160;
+
+	next(state) := switch(state)
+	{
+		37 : 77;
+		77 : 160;
+		160 : 37;
+	};
+
+FAIRNESS
+	running;
+}

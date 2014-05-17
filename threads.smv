@@ -1,0 +1,32 @@
+MODULE main()
+{
+	bus : bus;
+	client : array 0 .. 2 of client();
+	server : server();
+}
+
+typedef bus struct {
+	ready : boolean;
+	client_dest : 0 .. 2;
+	server_dest : 0 .. 2;
+}
+
+MODULE client()
+{
+	threads : array 0 .. 2 of process of client_t();
+}
+
+MODULE client_t()
+{
+	
+}
+
+MODULE server()
+{
+	
+}
+
+MODULE server_t()
+{
+	
+}
