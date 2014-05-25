@@ -6,7 +6,7 @@ MODULE main()
 	server : lock_server(lct_server_channels, server_lct_channels);
 
 SPEC
-	AG(clients.threads.state = 36 -> (AF clients.threads.state = 37));
+	AG(clients.threads.state = 36 -> !(EF clients.threads.state = 37));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -284,7 +284,7 @@ MODULE lock_client(id_arrange, server_lct_channels, lct_server_channels)
 	init(client_state.lockMap[0].acqCond.wait_num) := 0;
 	init(client_state.lockMap[0].retryCond.wake_ok) := 0;
 	init(client_state.lockMap[0].retryCond.wait_num) := 0;
-	init(client_state.lockMap[0].status) := free;
+	init(client_state.lockMap[0].status) := not_hold;
 	init(client_state.lockMap[0].gotRevoke) := 0;
 	init(client_state.lockMap[0].gotRetry) := 0;
 
@@ -294,7 +294,7 @@ MODULE lock_client(id_arrange, server_lct_channels, lct_server_channels)
 	init(client_state.lockMap[1].acqCond.wait_num) := 0;
 	init(client_state.lockMap[1].retryCond.wake_ok) := 0;
 	init(client_state.lockMap[1].retryCond.wait_num) := 0;
-	init(client_state.lockMap[1].status) := free;
+	init(client_state.lockMap[1].status) := not_hold;
 	init(client_state.lockMap[1].gotRevoke) := 0;
 	init(client_state.lockMap[1].gotRetry) := 0;
 

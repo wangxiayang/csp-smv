@@ -19,7 +19,7 @@ MODULE main()
 	server : lock_server(lct_server_channels, server_lct_channels);
 
 SPEC
-	AG(clients.threads[0].state = 36 -> AF (clients.threads[0].state = 37));
+	AG(clients.threads[0].state = 36 -> !EF (clients.threads[0].state = 37));
 }
 
 typedef lock_protocol_status {lock_protocol_ok, lock_protocol_retry, lock_protocol_rpcerr, lock_protocol_noent, lock_protocol_ioerr};
@@ -472,7 +472,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 	};
 	-- specify the transitions
 	next(state) := switch(state) {
-		36 : {36, 37};	-- acquiring the lock
+		36 : 37;	-- acquiring the lock
 		37 : 56;
 		56 : !getLock ? 58 : 130;
 		58 : !client_state.lockMap[lid].lock ? 59 : 58;	-- wait for mutex
@@ -504,7 +504,7 @@ MODULE lc_thread(client_state, server_lct_channel, lct_server_channel)
 		123 : 128;
 		128 : 56;
 		130 : 136;
-		136 : {136, 137};	-- releasing the lock
+		136 : 137;	-- releasing the lock
 		137 : 138;
 		138 : !client_state.lockMap[lid].lock ? 139 : 138;
 		139 : 142;
